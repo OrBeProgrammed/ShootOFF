@@ -1,24 +1,14 @@
-import groovyx.gpars.GParsPool
-import groovy.xml.NamespaceBuilder
-import org.kohsuke.github.GitHub
-import org.ajoberstar.grgit.Grgit
-import org.ajoberstar.grgit.Credentials
-
 buildscript {
     repositories {
-        jcenter()
+        mavenCentral()
         maven {
-            url  "http://repo.jenkins-ci.org/releases/"
+            url  "https://repo.jenkins-ci.org/releases/"
         }
     }
     dependencies {
         classpath group: 'org.codehaus.gpars', name: 'gpars', version: '1.1.0'
         classpath group: 'org.kohsuke', name: 'github-api', version: '1.+'
     }
-}
-
-plugins {
-    id 'org.ajoberstar.grgit' version '1.3.2'
 }
 
 apply plugin: 'java'
@@ -63,15 +53,27 @@ def keyAlias = 'cscert'
 def tsaURL = 'http://timestamp.comodoca.com/rfc3161'
 
 repositories {
-    jcenter()
+    mavenCentral()
     // This repository is directly included even though we use jcenter
     // because it makes it easier to get the smallest set of marytts that
     // meets our needs without missing the freetts dependency
     maven {
-        url  "http://dl.bintray.com/marytts/marytts/"
+        url  "https://dl.bintray.com/marytts/marytts/"
     }
     maven {
         url "https://dl.bintray.com/phrack/maven/"
+    }
+    maven {
+        url "https://maven.dcm4che.org/"
+    }
+    maven {
+        url "https://raw.githubusercontent.com/DFKI-MLT/Maven-Repository/main/"
+    }
+    maven {
+        url "https://nrgxnat.jfrog.io/artifactory/libs-release/"
+    }
+    maven {
+        url "https://nexus.terrestris.de/repository/public/"
     }
 }
 
@@ -80,69 +82,69 @@ configurations {
 
     // Some dependencies (webcam-capture and marytts?) pull in slf4j implementations that conflict
     // with logback
-    compile.exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+    implementation.exclude group: 'org.slf4j', module: 'slf4j-log4j12'
 }
 
 dependencies {
     jfxant files("$javaHome" + "/../lib/ant-javafx.jar")
 
     // FindBugs annotations to suppress warnings
-    compile group: 'com.google.code.findbugs', name: 'annotations', version: '3.+'
+    implementation group: 'com.google.code.findbugs', name: 'annotations', version: '3.+'
 
     // Raven, exception reporting client (requires logback)
-    //compile group: 'com.getsentry.raven', name: 'raven-logback', version: '7.+'
+    //implementation group: 'com.getsentry.raven', name: 'raven-logback', version: '7.+'
 
     // Logback to enable exception reporting
-    compile group: 'ch.qos.logback', name: 'logback-core', version: '1.+'
-    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.+'
+    implementation group: 'ch.qos.logback', name: 'logback-core', version: '1.2.12'
+    implementation group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.12'
 
     // bridj is here because webcam-capture depends on it but fetches 0.6.2, which
     // does not play nicely with stackguard in newer versions of the JVM.
-    compile group: 'com.nativelibs4java', name: 'bridj', version: '0.7.0'
-    compile group: 'com.github.sarxos', name: 'webcam-capture', version: '0.3.+'
-    compile group: 'com.github.sarxos', name: 'webcam-capture-driver-ipcam', version: '0.3.+'
-    compile group: 'com.github.sarxos', name: 'webcam-capture-driver-v4l4j', version: '0.3.+'
+    implementation group: 'com.nativelibs4java', name: 'bridj', version: '0.7.0'
+    implementation group: 'com.github.sarxos', name: 'webcam-capture', version: '0.3.+'
+    implementation group: 'com.github.sarxos', name: 'webcam-capture-driver-ipcam', version: '0.3.+'
+    implementation group: 'com.github.sarxos', name: 'webcam-capture-driver-v4l4j', version: '0.3.+'
 
-    compile group: 'commons-cli', name: 'commons-cli', version: '1.+'
-    compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.+'
-    compile group: 'org.apache.httpcomponents', name: 'httpmime', version: '4.+'
+    implementation group: 'commons-cli', name: 'commons-cli', version: '1.+'
+    implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.+'
+    implementation group: 'org.apache.httpcomponents', name: 'httpmime', version: '4.+'
 
     // tts dependencies
-    compile group: 'de.dfki.mary', name: 'marytts-runtime', version: '5.1.+'
-    compile group: 'de.dfki.mary', name: 'marytts-lang-en', version: '5.1.+'
-    compile group: 'de.dfki.mary', name: 'voice-cmu-slt-hsmm', version: '5.1.+'
+    implementation group: 'de.dfki.mary', name: 'marytts-runtime', version: '5.2.+'
+    implementation group: 'de.dfki.mary', name: 'marytts-lang-en', version: '5.2.+'
+    implementation group: 'de.dfki.mary', name: 'voice-cmu-slt-hsmm', version: '5.2.+'
 
     // xuggle for recording and playing back video
-    compile group: 'xuggle', name: 'xuggle-xuggler', version: '5.4'
+    implementation group: 'xuggle', name: 'xuggle-xuggler', version: '5.4'
 
     // JSON
-    compile group: 'com.googlecode.json-simple', name: 'json-simple', version: '1.1+'
+    implementation group: 'com.googlecode.json-simple', name: 'json-simple', version: '1.1+'
 
     // OpenImaj
-    compile('org.openimaj:core:1.+') {
+    implementation('org.openimaj:core:1.+') {
         // OpenImaj transitive dependency that we don't need and that doesn't seem to exist in
         // repos anymore
         exclude group: 'vigna.dsi.unimi.it'
     }
 
     //OpenCV
-    compile 'org.openpnp:opencv:2.4.+'
+    implementation 'org.openpnp:opencv:2.4.+'
 
     // OSHI to collect HW and system state data
-    compile group: 'com.github.dblock', name: 'oshi-core', version: '3.+'
+    implementation group: 'com.github.dblock', name: 'oshi-core', version: '3.+'
 
     // JSoup to get processor benchmark data
-    compile group: 'org.jsoup', name: 'jsoup', version: '1.+'
-    
-    // Bluetooth libraries, QR code generator, and JSON serializer for headless mode
-    compile 'net.sf.bluecove:bluecove:2.1.0'
-    // Assumption that headless mode will only be supported on Linux
-    compile 'net.sf.bluecove:bluecove-gpl:2.1.0'
-    compile 'com.google.zxing:core:3.3.0'
-    compile 'com.google.code.gson:gson:2.8.0'
+    implementation group: 'org.jsoup', name: 'jsoup', version: '1.+'
 
-    testCompile group: 'junit', name: 'junit', version: '4.+'
-    testCompile group: 'org.hamcrest', name: 'hamcrest-core', version: '1.+'
+    // Bluetooth libraries, QR code generator, and JSON serializer for headless mode
+    implementation 'net.sf.bluecove:bluecove:2.1.0'
+    // Assumption that headless mode will only be supported on Linux
+    implementation 'net.sf.bluecove:bluecove-gpl:2.1.0'
+    implementation 'com.google.zxing:core:3.3.0'
+    implementation 'com.google.code.gson:gson:2.8.0'
+
+    testImplementation group: 'junit', name: 'junit', version: '4.+'
+    testImplementation group: 'org.hamcrest', name: 'hamcrest-core', version: '1.+'
 }
 
 test {
@@ -177,7 +179,7 @@ task copySounds(type:Copy) {
 }
 
 task copyLibs(type:Copy) {
-    from { configurations.default.collect { it.isDirectory() ? it : it } }
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : it } }
     into libTempDir
     exclude "*jfxrt.jar"
     exclude "*java2html.jar"
@@ -213,11 +215,11 @@ task fxJar(dependsOn: build) {
     description 'Create a runnable jar for ShootOFF'
     group 'Package'
 
-    inputs.dir sourceSets.main.output.classesDir
+    inputs.files sourceSets.main.output.classesDirs
     inputs.dir sourceSets.main.output.resourcesDir
     outputs.file archivePath
 
-    def antfx = NamespaceBuilder.newInstance(
+    def antfx = groovy.xml.NamespaceBuilder.newInstance(
             ant,
             'javafx:com.sun.javafx.tools.ant')
 
@@ -234,7 +236,9 @@ task fxJar(dependsOn: build) {
 
         antfx.jar(destfile: archivePath) {
             application(refid: project.name)
-            fileset(dir: sourceSets.main.output.classesDir)
+            sourceSets.main.output.classesDirs.each { classDir ->
+                fileset(dir: classDir)
+            }
             fileset(dir: sourceSets.main.output.resourcesDir)
             antfx.resources() {
                 fileset(dir: 'build/dist/', includes: 'libs/*.jar')
@@ -270,8 +274,8 @@ task zipRelease(type: Zip) {
         include 'eyeCam64.dll'
     }
 
-    archiveName = releaseZip
-    destinationDir = file(dist)
+    archiveFileName = releaseZip
+    destinationDirectory = file(dist)
 }
 
 task getDiagnosticJar() {
@@ -286,7 +290,7 @@ task getDiagnosticJar() {
 	            password = new String(password)
 	        }
 
-	        gh = GitHub.connectUsingPassword(username, password)
+	        gh = org.kohsuke.github.GitHub.connectUsingPassword(username, password)
 
 	        if (!gh.isCredentialValid()) {
 	            throw new InvalidUserDataException('Incorrect GitHub credentials')
@@ -329,7 +333,7 @@ task pushZipRelease(dependsOn: zipRelease) {
             password = new String(password)
         }
 
-        if (!gh) gh = GitHub.connectUsingPassword(username, password)
+        if (!gh) gh = org.kohsuke.github.GitHub.connectUsingPassword(username, password)
 
         if (!gh.isCredentialValid()) {
             throw new InvalidUserDataException('Incorrect GitHub credentials')
@@ -364,7 +368,7 @@ task pushZipRelease(dependsOn: zipRelease) {
 
         // Update version metadata
 
-        grgit = Grgit.open('.', new Credentials(username: username, password: password))
+        grgit = org.ajoberstar.grgit.Grgit.open(file('.'))
         grgit.checkout(branch: 'gh-pages', createBranch: false)
 
         def versionMetadata = '<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n' +
@@ -406,7 +410,7 @@ task fxSignedJar(dependsOn: fxJar) {
 }
 
 task fxJarWritableResources() {
-    def antfx = NamespaceBuilder.newInstance(
+    def antfx = groovy.xml.NamespaceBuilder.newInstance(
             ant,
             'javafx:com.sun.javafx.tools.ant')
 
@@ -431,7 +435,7 @@ task msiRelease() {
     dependsOn('updateJars')
     dependsOn(getDiagnosticJar)
 
-    def antfx = NamespaceBuilder.newInstance(
+    def antfx = groovy.xml.NamespaceBuilder.newInstance(
             ant,
             'javafx:com.sun.javafx.tools.ant')
 
@@ -558,7 +562,7 @@ task fxWebstartSignedJar() {
                 )
         }
 
-        GParsPool.withPool {
+        groovyx.gpars.GParsPool.withPool {
             path.list().eachParallel { f ->
                 def antLocal = project.createAntBuilder()
                 antLocal.signjar(
@@ -574,7 +578,7 @@ task fxWebstartSignedJar() {
 }
 
 task fxRelease(dependsOn: fxWebstartSignedJar) {
-    def antfx = NamespaceBuilder.newInstance(
+    def antfx = groovy.xml.NamespaceBuilder.newInstance(
             ant,
             'javafx:com.sun.javafx.tools.ant')
 
@@ -678,7 +682,7 @@ task pushFxRelease(dependsOn: fxRelease) {
             password = new String(password)
         }
 
-        grgit = Grgit.open('.', new Credentials(username: username, password: password))
+        grgit = org.ajoberstar.grgit.Grgit.open(file('.'))
         grgit.checkout(branch: 'gh-pages', createBranch: false)
 
         delete jwsDir + 'libs'

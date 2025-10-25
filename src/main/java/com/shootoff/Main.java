@@ -50,8 +50,6 @@ import com.shootoff.plugins.TextToSpeech;
 import com.shootoff.util.HardwareData;
 import com.shootoff.util.SystemInfo;
 import com.shootoff.util.VersionChecker;
-import com.sun.deploy.uitoolkit.impl.fx.HostServicesFactory;
-import com.sun.javafx.application.HostServicesDelegate;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import javafx.application.Application;
@@ -520,8 +518,7 @@ public class Main extends Application {
 				final Hyperlink lnk = new Hyperlink(link);
 
 				lnk.setOnAction((event) -> {
-					final HostServicesDelegate hostServices = HostServicesFactory.getInstance(this);
-					hostServices.showDocument(link);
+					getHostServices().showDocument(link);
 					lnk.setVisited(true);
 				});
 
