@@ -39,6 +39,7 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
+import javafx.scene.layout.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,10 +65,6 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableColumn.CellDataFeatures;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.Pane;
-import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.util.Callback;
 
@@ -169,10 +166,8 @@ public abstract class TrainingExerciseBase {
 			getColumnConstraints().add(new ColumnConstraints(100));
 			setVgap(5);
 
-			final Label instructionsLabel = new Label("Set interval within which a beep will sound\n"
-					+ "to signal the start of a round.\nDefault: A round starts after a random wait\n"
-					+ "between 4 and 8 seconds in length.\n");
-			instructionsLabel.setPrefSize(300, 77);
+			final Label instructionsLabel = new Label("Set interval within which a beep will sound to signal the start of a round.\n");
+			instructionsLabel.setPrefSize(Region.USE_COMPUTED_SIZE, Region.USE_COMPUTED_SIZE);
 
 			this.add(instructionsLabel, 0, 0, 2, 3);
 			addRow(3, new Label("Min (s)"));

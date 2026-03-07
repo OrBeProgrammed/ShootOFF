@@ -6,19 +6,19 @@
  found in the LICENSE file.
 -->
 
-<?import javafx.scene.text.*?>
-<?import javafx.geometry.*?>
-<?import javafx.scene.*?>
-<?import javafx.scene.canvas.*?>
-<?import javafx.scene.input.*?>
-<?import javafx.scene.control.*?>
-<?import java.lang.*?>
-<?import javafx.scene.layout.*?>
-<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
 
-<VBox fx:id="shootOffContainer" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.shootoff.gui.controller.ShootOFFController">
+<VBox fx:id="shootOffContainer" xmlns="http://javafx.com/javafx/8.0.172-ea" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.shootoff.gui.controller.ShootOFFController">
    <children>
-      <HBox fx:id="controlsContainer" alignment="TOP_CENTER" minHeight="160.0" prefWidth="200.0" spacing="175.0">
+      <HBox fx:id="controlsContainer" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="60.0" prefHeight="60.0" prefWidth="1190.0" spacing="20.0">
          <children>
             <Button mnemonicParsing="false" onMouseClicked="#fileButtonClicked" prefHeight="100.0" prefWidth="150.0" text="File" />
             <Button mnemonicParsing="false" onMouseClicked="#targetsButtonClicked" prefHeight="100.0" prefWidth="150.0" text="Targets" />
@@ -26,41 +26,42 @@
             <Button mnemonicParsing="false" onMouseClicked="#projectorButtonClicked" prefHeight="100.0" prefWidth="150.0" text="Projector" />
          </children>
          <padding>
-            <Insets bottom="30.0" left="30.0" right="30.0" top="30.0" />
+            <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
          </padding>
       </HBox>
-      <VBox fx:id="bodyContainer">
+      <VBox fx:id="bodyContainer" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308">
          <children>
-            <HBox spacing="30.0" VBox.vgrow="ALWAYS">
-               <children>
-                  <ScrollPane fitToHeight="true" fitToWidth="true" prefViewportWidth="265.0" HBox.hgrow="ALWAYS">
+            <SplitPane dividerPositions="0.5" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" orientation="VERTICAL">
+               <items>
+                  <SplitPane dividerPositions="0.24242424242424243, 0.8543771043771043" maxHeight="1.7976931348623157E308" minHeight="480.0" minWidth="640.0">
+                    <items>
+                        <ScrollPane fitToHeight="true" fitToWidth="true" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="0.0" minWidth="100.0">
+                           <content>
+                              <TableView fx:id="shotTimerTable" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="0.0" minWidth="100.0" />
+                           </content>
+                        </ScrollPane>
+                        <TabPane fx:id="cameraTabPane" minHeight="240.0" minWidth="320.0" prefHeight="480.0" prefWidth="640.0" tabClosingPolicy="UNAVAILABLE" />
+                        <VBox fx:id="buttonsContainer" alignment="TOP_CENTER" fillWidth="false" maxHeight="1.7976931348623157E308" maxWidth="150.0" minHeight="240.0" minWidth="150.0" prefHeight="480.0" prefWidth="150.0" spacing="30.0" SplitPane.resizableWithParent="false">
+                           <children>
+                              <Button mnemonicParsing="false" onAction="#resetClicked" prefHeight="30.0" prefWidth="150.0" text="Reset" GridPane.halignment="CENTER" GridPane.hgrow="NEVER" GridPane.valignment="CENTER" GridPane.vgrow="NEVER">
+                                 <GridPane.margin>
+                                    <Insets bottom="2.0" />
+                                 </GridPane.margin>
+                              </Button>
+                           </children>
+                           <padding>
+                              <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                           </padding>
+                        </VBox>
+                    </items>
+                  </SplitPane>
+                  <ScrollPane fx:id="trainingExerciseScrollPane" hbarPolicy="NEVER" minHeight="150.0" minWidth="320.0">
                      <content>
-                        <TableView fx:id="shotTimerTable" minHeight="0.0" minWidth="0.0" />
+                        <VBox fx:id="trainingExerciseContainer" />
                      </content>
                   </ScrollPane>
-                  <TabPane fx:id="cameraTabPane" minHeight="480.0" minWidth="640.0" prefHeight="480.0" prefWidth="640.0" tabClosingPolicy="UNAVAILABLE" HBox.hgrow="NEVER" />
-                  <VBox fx:id="buttonsContainer" alignment="CENTER" spacing="30.0">
-                     <children>
-                        <Button mnemonicParsing="false" onAction="#resetClicked" prefHeight="100.0" prefWidth="150.0" text="Reset" GridPane.halignment="CENTER" GridPane.hgrow="NEVER" GridPane.valignment="CENTER" GridPane.vgrow="NEVER">
-                           <GridPane.margin>
-                              <Insets bottom="2.0" />
-                           </GridPane.margin>
-                        </Button>
-                     </children>
-                  </VBox>
-               </children>
-               <VBox.margin>
-                  <Insets />
-               </VBox.margin>
-               <padding>
-                  <Insets bottom="30.0" left="30.0" right="30.0" />
-               </padding>
-            </HBox>
-            <ScrollPane fx:id="trainingExerciseScrollPane" hbarPolicy="NEVER" minHeight="150.0" HBox.hgrow="ALWAYS">
-               <content>
-                  <VBox fx:id="trainingExerciseContainer" />
-               </content>
-            </ScrollPane>
+               </items>
+            </SplitPane>
          </children>
       </VBox>
    </children>

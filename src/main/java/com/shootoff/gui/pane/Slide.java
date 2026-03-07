@@ -53,8 +53,8 @@ public abstract class Slide {
 		this.parentBody = parentBody;
 
 		final ImageView backImage = new ImageView(
-				new Image(Slide.class.getResourceAsStream("/images/back_button.png"), 60.0, 60.0, true, true));
-		final Button backButton = addSlideControlButton("", (Event) -> hide());
+				new Image(Slide.class.getResourceAsStream("/images/back_button.png"), 16.0, 16.0, true, true));
+		final Button backButton = addSlideControlButton("Back", (Event) -> hide());
 		backButton.setGraphic(backImage);
 	}
 

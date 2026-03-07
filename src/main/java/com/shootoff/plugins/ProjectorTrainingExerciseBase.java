@@ -383,4 +383,8 @@ public class ProjectorTrainingExerciseBase extends TrainingExerciseBase {
 
 		super.destroy();
 	}
+
+	protected ProjectorArenaPane getArenaPane() {
+		return arenaPane;
+	}
 }
