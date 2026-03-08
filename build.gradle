@@ -54,15 +54,8 @@ def tsaURL = 'http://timestamp.comodoca.com/rfc3161'
 
 repositories {
     mavenCentral()
-    // This repository is directly included even though we use jcenter
-    // because it makes it easier to get the smallest set of marytts that
-    // meets our needs without missing the freetts dependency
-    maven {
-        url  "https://dl.bintray.com/marytts/marytts/"
-    }
-    maven {
-        url "https://dl.bintray.com/phrack/maven/"
-    }
+    // Bintray is defunct — marytts artifacts are available on Maven Central
+    // and the DFKI Maven repo below. The phrack repo is no longer needed.
     maven {
         url "https://maven.dcm4che.org/"
     }
@@ -201,6 +194,23 @@ task updateJars() {
                 }
             }
         }
+    }
+}
+
+task simpleJar(type: Jar, dependsOn: [build, 'copyConfig', 'copyTargets', 'copyCourses', 'copySounds', 'copyLibs', 'copyEyeCam']) {
+    description 'Create a runnable jar for ShootOFF (without ant-javafx)'
+    group 'Package'
+
+    destinationDirectory = file('build/dist')
+    archiveFileName = 'ShootOFF.jar'
+
+    from sourceSets.main.output
+
+    manifest {
+        attributes(
+            'Main-Class': mainClassName,
+            'Class-Path': configurations.runtimeClasspath.collect { 'libs/' + it.name }.join(' ')
+        )
     }
 }
 

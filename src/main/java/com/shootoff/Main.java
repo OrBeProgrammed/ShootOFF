@@ -546,7 +546,8 @@ public class Main extends Application {
 			return;
 		}
 
-		if (version.isPresent() && !config.inDebugMode() && !isJWS) checkVersion();
+		// shootoffapp.com is defunct — skip the version check
+		// if (version.isPresent() && !config.inDebugMode() && !isJWS) checkVersion();
 
 		// This initializes the TTS engine
 		TextToSpeech.say("");
@@ -785,18 +786,31 @@ public class Main extends Application {
 			CameraFactory.getDefault();
 		} else if (SystemInfo.isLinux()) {
 			// Need to ensure v4l1compat is preloaded if it exists otherwise
-			// OpenCV won't work
-			final File v4lCompat = new File("/usr/lib/libv4l/v4l1compat.so");
+			// OpenCV won't work. Check multiple known paths since distros
+			// vary in where they install this library.
+			final String[] v4lPaths = {
+				"/usr/lib/libv4l/v4l1compat.so",
+				"/usr/lib/x86_64-linux-gnu/libv4l/v4l1compat.so",
+				"/usr/lib/aarch64-linux-gnu/libv4l/v4l1compat.so",
+				"/usr/lib/i386-linux-gnu/libv4l/v4l1compat.so"
+			};
 
-			if (v4lCompat.exists()) {
+			File v4lCompat = null;
+			for (final String path : v4lPaths) {
+				final File candidate = new File(path);
+				if (candidate.exists()) {
+					v4lCompat = candidate;
+					break;
+				}
+			}
+
+			if (v4lCompat != null) {
 				final String preload = System.getenv("LD_PRELOAD");
 
 				if (preload == null || !preload.contains(v4lCompat.getPath())) {
 					closeNoV4lCompat(v4lCompat);
 				}
 			} else {
-				// The over-exuberance here is because a lot of people miss this
-				// message
 				logger.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
 						+ "This system is running Linux, and likely therefore also v4l. "
 						+ "If ShootOFF fails to run or has camera problems, it's likely because you need "
