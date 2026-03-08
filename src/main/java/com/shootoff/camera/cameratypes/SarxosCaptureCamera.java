@@ -132,9 +132,21 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 			if (sarxosWebcam == null || !sarxosWebcam.isOpen()) return null;
 			final BufferedImage img = sarxosWebcam.getImage();
 			if (img == null) return null;
+
+			// webcam-capture may return TYPE_CUSTOM images that don't
+			// convert correctly to Mat. Re-draw into a TYPE_3BYTE_BGR
+			// image to ensure the pixel layout matches what OpenCV expects.
+			final BufferedImage bgrImage;
+			if (img.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+				bgrImage = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+				bgrImage.getGraphics().drawImage(img, 0, 0, null);
+			} else {
+				bgrImage = img;
+			}
+
 			final long currentFrameTimestamp = System.currentTimeMillis();
 			frameCount++;
-			return new Frame(img, currentFrameTimestamp);
+			return new Frame(bgrImage, currentFrameTimestamp);
 		} catch (final Exception e) {
 			return null;
 		}
