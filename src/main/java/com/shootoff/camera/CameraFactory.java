@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.sarxos.webcam.Webcam;
 import com.github.sarxos.webcam.WebcamCompositeDriver;
+import com.github.sarxos.webcam.WebcamDiscoveryService;
 import com.github.sarxos.webcam.ds.buildin.WebcamDefaultDriver;
 import com.github.sarxos.webcam.ds.ipcam.IpCamDevice;
 import com.github.sarxos.webcam.ds.ipcam.IpCamDriver;
@@ -51,6 +52,10 @@ public final class CameraFactory {
 	private static final boolean isMac;
 	private static Webcam defaultWebcam = null;
 	private static List<Camera> knownWebcams;
+	// Cache of sarxos Webcam objects from initial discovery (Linux).
+	// Re-calling Webcam.getWebcams() after stopping the discovery service
+	// can fail, so we cache the result.
+	private static List<Webcam> cachedSarxosWebcams = null;
 
 	private static List<Camera> openCameras = Collections.synchronizedList(new ArrayList<>());
 
@@ -106,9 +111,10 @@ public final class CameraFactory {
 			else
 				defaultCam = new SarxosCaptureCamera(defaultWebcam.getName());
 		} else {
-			final Webcam cam = Webcam.getDefault();
-
-			defaultCam = cam == null ? null : new SarxosCaptureCamera(cam.getName());
+			// Use getWebcams() instead of Webcam.getDefault() to avoid
+			// re-triggering discovery after we've stopped the service
+			final List<Camera> all = getWebcams();
+			defaultCam = all.isEmpty() ? null : all.get(0);
 		}
 
 		if (defaultCam == null && !registeredCameras.isEmpty()) {
@@ -123,8 +129,19 @@ public final class CameraFactory {
 
 		final List<Camera> webcams = new ArrayList<>();
 
+		if (cachedSarxosWebcams == null) {
+			cachedSarxosWebcams = Webcam.getWebcams();
+
+			// Stop the background discovery service to prevent it from leaking
+			// V4L2 file descriptors on Linux. The bridj V4L2 driver opens devices
+			// during periodic scans but doesn't always close them, exhausting the
+			// 16-device limit and preventing ffmpeg from accessing cameras.
+			stopDiscoveryService();
+		}
+		final List<Webcam> sarxosWebcams = cachedSarxosWebcams;
+
 		int cameraIndex = 0;
-		for (final Webcam w : Webcam.getWebcams()) {
+		for (final Webcam w : sarxosWebcams) {
 			final Camera c;
 			if (w.getDevice() instanceof IpCamDevice)
 				c = new IpCamera(w);
@@ -162,6 +179,18 @@ public final class CameraFactory {
 	public static void openCamerasAdd(Camera camera) {
 		synchronized (openCameras) {
 			if (!openCameras.contains(camera)) openCameras.add(camera);
+		}
+	}
+
+	private static void stopDiscoveryService() {
+		try {
+			final WebcamDiscoveryService ds = Webcam.getDiscoveryServiceRef();
+			if (ds != null && ds.isRunning()) {
+				ds.stop();
+				logger.info("Stopped webcam discovery service to prevent V4L2 FD leak");
+			}
+		} catch (final Exception e) {
+			logger.warn("Could not stop webcam discovery service", e);
 		}
 	}
 

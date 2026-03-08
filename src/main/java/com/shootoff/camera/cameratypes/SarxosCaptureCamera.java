@@ -185,30 +185,37 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 		closing.set(false);
 
-		// Try OpenCV first
-		boolean open = camera.open(cameraIndex);
+		boolean open = false;
 
-		if (open) {
-			// Verify we can actually read a frame
-			final Mat testFrame = new Mat();
-			boolean canRead = false;
-			for (int i = 0; i < 3; i++) {
-				if (camera.read(testFrame) && testFrame.size().height > 0) {
-					canRead = true;
-					break;
-				}
-				try { Thread.sleep(100); } catch (InterruptedException ignored) {}
-			}
-			if (!canRead) {
-				logger.warn("OpenCV opened device {} but cannot read frames, trying ffmpeg fallback", cameraIndex);
-				camera.release();
-				open = false;
-			}
+		// On Linux with a known device path, use ffmpeg directly.
+		// OpenCV 2.4's v4l1compat interaction poisons the V4L2 device state,
+		// making it inaccessible to ffmpeg (and sometimes itself) afterwards.
+		if (devicePath != null && System.getProperty("os.name", "").toLowerCase().contains("linux")) {
+			logger.info("Linux detected with device path {}, using ffmpeg directly", devicePath);
+			open = openFfmpegFallback();
 		}
 
-		if (!open && devicePath != null) {
-			// Fall back to ffmpeg process-based capture
-			open = openFfmpegFallback();
+		if (!open) {
+			// Try OpenCV (works well on Windows/Mac, or Linux without device path)
+			open = camera.open(cameraIndex);
+
+			if (open) {
+				// Verify we can actually read a frame
+				final Mat testFrame = new Mat();
+				boolean canRead = false;
+				for (int i = 0; i < 3; i++) {
+					if (camera.read(testFrame) && testFrame.size().height > 0) {
+						canRead = true;
+						break;
+					}
+					try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+				}
+				if (!canRead) {
+					logger.warn("OpenCV opened device {} but cannot read frames", cameraIndex);
+					camera.release();
+					open = false;
+				}
+			}
 		}
 
 		if (open) {
@@ -228,58 +235,66 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		final int[][] resolutions = {{640, 480}, {320, 240}};
 
 		for (final int[] res : resolutions) {
-			try {
-				final ProcessBuilder pb = new ProcessBuilder(
-					"ffmpeg",
-					"-loglevel", "error",
-					"-f", "v4l2",
-					"-video_size", res[0] + "x" + res[1],
-					"-i", devicePath,
-					"-f", "rawvideo",
-					"-pix_fmt", "bgr24",
-					"-an",
-					"-"
-				);
-				pb.redirectErrorStream(false);
-				// Send ffmpeg's stderr to /dev/null to prevent buffer fill-up
-				pb.redirectError(new java.io.File("/dev/null"));
-				final Process proc = pb.start();
-
-				// Read a test frame to verify it works
-				final InputStream stream = proc.getInputStream();
-				final int frameSize = res[0] * res[1] * 3;
-				final byte[] testBuf = new byte[frameSize];
-				int offset = 0;
-				final long deadline = System.currentTimeMillis() + 5000;
-				while (offset < frameSize && System.currentTimeMillis() < deadline) {
-					final int read = stream.read(testBuf, offset, frameSize - offset);
-					if (read == -1) break;
-					offset += read;
+			// Retry up to 3 times — the webcam-capture discovery service may be
+			// holding the device briefly during background probing
+			for (int attempt = 0; attempt < 3; attempt++) {
+				if (attempt > 0) {
+					logger.info("Retrying ffmpeg for {} (attempt {})", devicePath, attempt + 1);
+					try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
 				}
+				try {
+					final ProcessBuilder pb = new ProcessBuilder(
+						"ffmpeg",
+						"-loglevel", "error",
+						"-f", "v4l2",
+						"-video_size", res[0] + "x" + res[1],
+						"-i", devicePath,
+						"-f", "rawvideo",
+						"-pix_fmt", "bgr24",
+						"-an",
+						"-"
+					);
+					pb.redirectErrorStream(false);
+					// Send ffmpeg's stderr to /dev/null to prevent buffer fill-up
+					pb.redirectError(new java.io.File("/dev/null"));
+					final Process proc = pb.start();
 
-				if (offset == frameSize) {
-					ffmpegProcess = proc;
-					ffmpegStream = stream;
-					ffmpegWidth = res[0];
-					ffmpegHeight = res[1];
-					usingFfmpegFallback = true;
-					logger.info("ffmpeg fallback opened at {}x{} for {}", res[0], res[1], devicePath);
+					// Read a test frame to verify it works
+					final InputStream stream = proc.getInputStream();
+					final int frameSize = res[0] * res[1] * 3;
+					final byte[] testBuf = new byte[frameSize];
+					int offset = 0;
+					final long deadline = System.currentTimeMillis() + 5000;
+					while (offset < frameSize && System.currentTimeMillis() < deadline) {
+						final int read = stream.read(testBuf, offset, frameSize - offset);
+						if (read == -1) break;
+						offset += read;
+					}
 
-					// Ensure ffmpeg is killed when JVM exits
-					Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-						if (ffmpegProcess != null && ffmpegProcess.isAlive()) {
-							ffmpegProcess.destroyForcibly();
-						}
-					}));
+					if (offset == frameSize) {
+						ffmpegProcess = proc;
+						ffmpegStream = stream;
+						ffmpegWidth = res[0];
+						ffmpegHeight = res[1];
+						usingFfmpegFallback = true;
+						logger.info("ffmpeg fallback opened at {}x{} for {}", res[0], res[1], devicePath);
 
-					return true;
-				} else {
-					logger.warn("ffmpeg fallback could not read full frame at {}x{} (got {} of {} bytes)",
-						res[0], res[1], offset, frameSize);
-					proc.destroyForcibly();
+						// Ensure ffmpeg is killed when JVM exits
+						Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+							if (ffmpegProcess != null && ffmpegProcess.isAlive()) {
+								ffmpegProcess.destroyForcibly();
+							}
+						}));
+
+						return true;
+					} else {
+						logger.info("ffmpeg could not read full frame at {}x{} (got {} of {} bytes, attempt {})",
+							res[0], res[1], offset, frameSize, attempt + 1);
+						proc.destroyForcibly();
+					}
+				} catch (final Exception e) {
+					logger.error("ffmpeg fallback failed at {}x{}", res[0], res[1], e);
 				}
-			} catch (final Exception e) {
-				logger.error("ffmpeg fallback failed at {}x{}", res[0], res[1], e);
 			}
 		}
 
