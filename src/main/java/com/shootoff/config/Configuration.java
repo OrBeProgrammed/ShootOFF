@@ -290,7 +290,7 @@ public class Configuration {
 			final List<String> webcamInternalNames = new ArrayList<>();
 
 			for (final String nameString : prop.getProperty(WEBCAMS_PROP).split(",")) {
-				final String[] names = nameString.split(":");
+				final String[] names = nameString.split(":", 2);
 				if (names.length > 1) {
 					webcamNames.add(names[0].replaceAll("//`", ":"));
 					webcamInternalNames.add(names[1].replaceAll("//`", ":"));
