@@ -179,9 +179,22 @@ public class PixelClusterManager {
 					shotHeight, shotRatio, minX, minY, maxX, maxY);
 
 			if ((shotWidth + shotHeight) > SMALL_SHOT_THRESHOLD
-					&& (shotRatio < MINIMUM_SHOT_RATIO || shotRatio > MAXIMUM_SHOT_RATIO))
+					&& (shotRatio < MINIMUM_SHOT_RATIO || shotRatio > MAXIMUM_SHOT_RATIO)) {
+				// Cluster is elongated (e.g. laser streak from recoil).
+				// Use the brightest pixel as the shot origin instead of discarding.
+				final PixelCluster streakShot = extractBrightestSubCluster(cluster, minimumShotDimension);
+				if (streakShot != null) {
+					clusters.add(streakShot);
+				}
 				continue;
-			else if (shotRatio < MINIMUM_SHOT_RATIO_SMALL || shotRatio > MAXIMUM_SHOT_RATIO_SMALL) continue;
+			}
+			else if (shotRatio < MINIMUM_SHOT_RATIO_SMALL || shotRatio > MAXIMUM_SHOT_RATIO_SMALL) {
+				final PixelCluster streakShot = extractBrightestSubCluster(cluster, minimumShotDimension);
+				if (streakShot != null) {
+					clusters.add(streakShot);
+				}
+				continue;
+			}
 
 			final double r = (double) (shotWidth + shotHeight) / 4.0f;
 			final double circleArea = Math.PI * r * r;
@@ -190,7 +203,14 @@ public class PixelClusterManager {
 			if (logger.isTraceEnabled()) logger.trace("Cluster {}: density {} {} - {} {} - {}", i, shotWidth,
 					shotHeight, circleArea, cluster.size(), density);
 
-			if (density < MINIMUM_DENSITY) continue;
+			if (density < MINIMUM_DENSITY) {
+				// Low density may indicate a streak — try to extract the impact point
+				final PixelCluster streakShot = extractBrightestSubCluster(cluster, minimumShotDimension);
+				if (streakShot != null) {
+					clusters.add(streakShot);
+				}
+				continue;
+			}
 
 			cluster.centerPixelX = averageX;
 			cluster.centerPixelY = averageY;
@@ -202,5 +222,62 @@ public class PixelClusterManager {
 			logger.trace("---- Detected {} shots from {} regions ------", clusters.size(), numberOfRegions + 1);
 
 		return clusters;
+	}
+
+	/**
+	 * For elongated clusters (laser streaks from recoil), find the brightest
+	 * pixel — the initial impact point before recoil dragged the laser — and
+	 * build a small sub-cluster around it.
+	 */
+	private PixelCluster extractBrightestSubCluster(PixelCluster cluster, int minimumShotDimension) {
+		if (cluster.size() < minimumShotDimension) return null;
+
+		// Find the brightest pixel (highest currentLum)
+		Pixel brightest = null;
+		int maxLum = -1;
+		for (final Pixel p : cluster) {
+			if (p.getCurrentLum() > maxLum) {
+				maxLum = p.getCurrentLum();
+				brightest = p;
+			}
+		}
+
+		if (brightest == null) return null;
+
+		// Collect nearby pixels within a small radius of the brightest point
+		final PixelCluster subCluster = new PixelCluster();
+		final int radius = 5;
+		for (final Pixel p : cluster) {
+			final int dx = p.x - brightest.x;
+			final int dy = p.y - brightest.y;
+			if (dx * dx + dy * dy <= radius * radius) {
+				subCluster.add(p);
+			}
+		}
+
+		if (subCluster.size() < minimumShotDimension) {
+			// Not enough pixels nearby — just use the brightest pixel location
+			subCluster.clear();
+			subCluster.add(brightest);
+		}
+
+		// Compute center weighted by connectedness
+		double weightedX = 0, weightedY = 0, totalWeight = 0;
+		for (final Pixel p : subCluster) {
+			final int weight = Math.max(1, p.getConnectedness());
+			weightedX += p.x * weight;
+			weightedY += p.y * weight;
+			totalWeight += weight;
+		}
+		subCluster.centerPixelX = weightedX / totalWeight;
+		subCluster.centerPixelY = weightedY / totalWeight;
+
+		if (logger.isTraceEnabled()) {
+			logger.trace("Streak detected: {} pixels, brightest at ({},{}), sub-cluster {} pixels at ({},{})",
+				cluster.size(), brightest.x, brightest.y,
+				subCluster.size(), subCluster.centerPixelX, subCluster.centerPixelY);
+		}
+
+		return subCluster;
 	}
 }
