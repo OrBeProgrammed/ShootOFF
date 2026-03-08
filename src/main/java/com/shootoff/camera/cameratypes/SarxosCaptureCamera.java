@@ -20,12 +20,15 @@ package com.shootoff.camera.cameratypes;
 
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.highgui.Highgui;
 import org.opencv.highgui.VideoCapture;
@@ -51,9 +54,13 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 	private String cameraName;
 	private final VideoCapture camera;
 
-	// Fallback: use webcam-capture directly when OpenCV can't handle the device
-	private Webcam sarxosWebcam = null;
-	private boolean usingSarxosFallback = false;
+	// Fallback: use ffmpeg process when OpenCV can't handle the device
+	private Process ffmpegProcess = null;
+	private InputStream ffmpegStream = null;
+	private boolean usingFfmpegFallback = false;
+	private int ffmpegWidth = 640;
+	private int ffmpegHeight = 480;
+	private String devicePath = null;
 
 	private final AtomicBoolean closing = new AtomicBoolean(false);
 	private static final Pattern DEV_VIDEO_PATTERN = Pattern.compile("/dev/video(\\d+)");
@@ -70,6 +77,12 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 			return deviceIndex;
 		}
 		return fallbackIndex;
+	}
+
+	private static String extractDevicePath(String cameraName) {
+		final Matcher m = DEV_VIDEO_PATTERN.matcher(cameraName);
+		if (m.find()) return m.group();
+		return null;
 	}
 
 	// For testing
@@ -94,7 +107,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		this.cameraName = cameraName;
 		this.discoveryIndex = cameraIndex;
 		this.cameraIndex = resolveDeviceIndex(cameraName, cameraIndex);
-
+		this.devicePath = extractDevicePath(cameraName);
 	}
 
 	public SarxosCaptureCamera(final String cameraName, int cameraIndex) {
@@ -104,21 +117,19 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		this.cameraName = cameraName;
 		this.discoveryIndex = cameraIndex;
 		this.cameraIndex = resolveDeviceIndex(cameraName, cameraIndex);
-
+		this.devicePath = extractDevicePath(cameraName);
 	}
 
 	@Override
 	public Frame getFrame() {
-		if (usingSarxosFallback) {
-			return getSarxosFrame();
+		if (usingFfmpegFallback) {
+			return getFfmpegFrame();
 		}
 
 		final Mat frame = new Mat();
 		try {
 			if (!isOpen() || !camera.read(frame) || frame.size().height == 0 || frame.size().width == 0) return null;
 		} catch (final Exception e) {
-			// Sometimes there is a race condition on closing the camera vs.
-			// read()
 			return null;
 		}
 
@@ -127,27 +138,29 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		return new Frame(frame, currentFrameTimestamp);
 	}
 
-	private Frame getSarxosFrame() {
+	private Frame getFfmpegFrame() {
 		try {
-			if (sarxosWebcam == null || !sarxosWebcam.isOpen()) return null;
-			final BufferedImage img = sarxosWebcam.getImage();
-			if (img == null) return null;
-
-			// webcam-capture may return TYPE_CUSTOM images that don't
-			// convert correctly to Mat. Re-draw into a TYPE_3BYTE_BGR
-			// image to ensure the pixel layout matches what OpenCV expects.
-			final BufferedImage bgrImage;
-			if (img.getType() != BufferedImage.TYPE_3BYTE_BGR) {
-				bgrImage = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
-				bgrImage.getGraphics().drawImage(img, 0, 0, null);
-			} else {
-				bgrImage = img;
+			if (ffmpegStream == null) return null;
+			final int frameSize = ffmpegWidth * ffmpegHeight * 3;
+			final byte[] buf = new byte[frameSize];
+			int offset = 0;
+			while (offset < frameSize) {
+				final int read = ffmpegStream.read(buf, offset, frameSize - offset);
+				if (read == -1) {
+					logger.warn("ffmpeg stream ended");
+					return null;
+				}
+				offset += read;
 			}
+
+			final Mat mat = new Mat(ffmpegHeight, ffmpegWidth, CvType.CV_8UC3);
+			mat.put(0, 0, buf);
 
 			final long currentFrameTimestamp = System.currentTimeMillis();
 			frameCount++;
-			return new Frame(bgrImage, currentFrameTimestamp);
+			return new Frame(mat, currentFrameTimestamp);
 		} catch (final Exception e) {
+			logger.error("Error reading ffmpeg frame", e);
 			return null;
 		}
 	}
@@ -176,8 +189,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		boolean open = camera.open(cameraIndex);
 
 		if (open) {
-			// Verify we can actually read a frame — some devices open but
-			// return empty frames (e.g. when webcam-capture holds the device)
+			// Verify we can actually read a frame
 			final Mat testFrame = new Mat();
 			boolean canRead = false;
 			for (int i = 0; i < 3; i++) {
@@ -188,72 +200,85 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 				try { Thread.sleep(100); } catch (InterruptedException ignored) {}
 			}
 			if (!canRead) {
-				logger.warn("OpenCV opened device {} but cannot read frames, trying webcam-capture fallback", cameraIndex);
+				logger.warn("OpenCV opened device {} but cannot read frames, trying ffmpeg fallback", cameraIndex);
 				camera.release();
 				open = false;
 			}
 		}
 
-		if (!open) {
-			// Fall back to webcam-capture's own capture mechanism
-			logger.info("Attempting webcam-capture fallback for camera index {} (discovery {})", cameraIndex, discoveryIndex);
-			final int idx = discoveryIndex >= 0 ? discoveryIndex : cameraIndex;
-			final List<Webcam> webcams = Webcam.getWebcams();
-			if (idx >= 0 && idx < webcams.size()) {
-				sarxosWebcam = webcams.get(idx);
-				try {
-					// Request a usable resolution. The bridj-based native
-					// capture can segfault at large sizes (e.g. 640x480) on
-					// some devices, so pick the largest size that doesn't
-					// exceed 320x240 — or fall back to the biggest available
-					// if all sizes are small.
-					final Dimension[] sizes = sarxosWebcam.getViewSizes();
-					if (sizes != null && sizes.length > 0) {
-						Dimension best = sizes[0];
-						Dimension bestSafe = null;
-						for (final Dimension d : sizes) {
-							if (d.width <= 320 && d.height <= 240) {
-								if (bestSafe == null || d.width * d.height > bestSafe.width * bestSafe.height) {
-									bestSafe = d;
-								}
-							}
-							if (d.width * d.height > best.width * best.height) {
-								best = d;
-							}
-						}
-						final Dimension chosen = bestSafe != null ? bestSafe : best;
-						sarxosWebcam.setViewSize(chosen);
-						logger.info("Set webcam-capture resolution to {}x{}", chosen.width, chosen.height);
-					}
-					sarxosWebcam.open();
-					if (sarxosWebcam.isOpen()) {
-						usingSarxosFallback = true;
-						open = true;
-						logger.info("Successfully opened camera via webcam-capture fallback: {}", sarxosWebcam.getName());
-					}
-				} catch (final Exception e) {
-					logger.error("webcam-capture fallback also failed for camera", e);
-				}
-			}
+		if (!open && devicePath != null) {
+			// Fall back to ffmpeg process-based capture
+			open = openFfmpegFallback();
 		}
 
 		if (open) {
-			if (!usingSarxosFallback) {
-				// Set the max FPS to 60. If we don't set this it defaults
-				// to 30, which unnecessarily hampers higher end cameras
+			if (!usingFfmpegFallback) {
 				camera.set(5, 60);
 			}
-
 			CameraFactory.openCamerasAdd(this);
 		}
 
 		return open;
 	}
 
+	private boolean openFfmpegFallback() {
+		logger.info("Attempting ffmpeg fallback for {}", devicePath);
+
+		// Try 640x480 first, then 320x240
+		final int[][] resolutions = {{640, 480}, {320, 240}};
+
+		for (final int[] res : resolutions) {
+			try {
+				final ProcessBuilder pb = new ProcessBuilder(
+					"ffmpeg",
+					"-f", "v4l2",
+					"-video_size", res[0] + "x" + res[1],
+					"-i", devicePath,
+					"-f", "rawvideo",
+					"-pix_fmt", "bgr24",
+					"-an",
+					"-"
+				);
+				pb.redirectErrorStream(false);
+				final Process proc = pb.start();
+
+				// Read a test frame to verify it works
+				final InputStream stream = proc.getInputStream();
+				final int frameSize = res[0] * res[1] * 3;
+				final byte[] testBuf = new byte[frameSize];
+				int offset = 0;
+				final long deadline = System.currentTimeMillis() + 5000;
+				while (offset < frameSize && System.currentTimeMillis() < deadline) {
+					final int read = stream.read(testBuf, offset, frameSize - offset);
+					if (read == -1) break;
+					offset += read;
+				}
+
+				if (offset == frameSize) {
+					ffmpegProcess = proc;
+					ffmpegStream = stream;
+					ffmpegWidth = res[0];
+					ffmpegHeight = res[1];
+					usingFfmpegFallback = true;
+					logger.info("ffmpeg fallback opened at {}x{} for {}", res[0], res[1], devicePath);
+					return true;
+				} else {
+					logger.warn("ffmpeg fallback could not read full frame at {}x{} (got {} of {} bytes)",
+						res[0], res[1], offset, frameSize);
+					proc.destroyForcibly();
+				}
+			} catch (final Exception e) {
+				logger.error("ffmpeg fallback failed at {}x{}", res[0], res[1], e);
+			}
+		}
+
+		return false;
+	}
+
 	@Override
 	public boolean isOpen() {
-		if (usingSarxosFallback) {
-			return sarxosWebcam != null && sarxosWebcam.isOpen();
+		if (usingFfmpegFallback) {
+			return ffmpegProcess != null && ffmpegProcess.isAlive();
 		}
 		return camera.isOpened();
 	}
@@ -265,11 +290,15 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 		if (isOpen() && !closing.get()) {
 			closing.set(true);
-			if (!usingSarxosFallback) {
+			if (usingFfmpegFallback) {
+				if (ffmpegProcess != null) {
+					ffmpegProcess.destroyForcibly();
+					ffmpegProcess = null;
+					ffmpegStream = null;
+				}
+			} else {
 				resetExposure();
 				camera.release();
-			} else if (sarxosWebcam != null) {
-				sarxosWebcam.close();
 			}
 
 			CameraFactory.openCamerasRemove(this);
@@ -292,9 +321,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	@Override
 	public void setViewSize(final Dimension size) {
-		if (usingSarxosFallback) {
-			if (sarxosWebcam != null) sarxosWebcam.setViewSize(size);
-		} else {
+		if (!usingFfmpegFallback) {
 			camera.set(Highgui.CV_CAP_PROP_FRAME_WIDTH, size.getWidth());
 			camera.set(Highgui.CV_CAP_PROP_FRAME_HEIGHT, size.getHeight());
 		}
@@ -302,15 +329,15 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	@Override
 	public Dimension getViewSize() {
-		if (usingSarxosFallback && sarxosWebcam != null) {
-			return sarxosWebcam.getViewSize();
+		if (usingFfmpegFallback) {
+			return new Dimension(ffmpegWidth, ffmpegHeight);
 		}
 		return new Dimension((int) camera.get(Highgui.CV_CAP_PROP_FRAME_WIDTH),
 				(int) camera.get(Highgui.CV_CAP_PROP_FRAME_HEIGHT));
 	}
 
 	public void launchCameraSettings() {
-		if (!usingSarxosFallback) camera.set(Highgui.CV_CAP_PROP_SETTINGS, 1);
+		if (!usingFfmpegFallback) camera.set(Highgui.CV_CAP_PROP_SETTINGS, 1);
 	}
 
 	@Override
@@ -349,10 +376,8 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	@Override
 	public boolean supportsExposureAdjustment() {
-		if (usingSarxosFallback) return false;
+		if (usingFfmpegFallback) return false;
 
-		// If we already verified that it works,
-		// we have an origExposure value set
 		if (origExposure.isPresent()) return true;
 
 		final double exp = camera.get(CV_CAP_PROP_EXPOSURE);
@@ -375,17 +400,8 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	@Override
 	public boolean decreaseExposure() {
-		if (usingSarxosFallback) return false;
+		if (usingFfmpegFallback) return false;
 
-		// Logic:
-		// If camera exposure is positive, decrease towards zero
-		// If camera exposure is negative and between -9.9 and 0, increase
-		// towards zero (Logitech c270)
-		// If camera exposure is negative and less than -10, decrease away from
-		// zero (oCam)
-
-		// In any case, if exposure doesn't change in the same direction when we
-		// change it, fail out.
 		final double curExp = camera.get(CV_CAP_PROP_EXPOSURE);
 		final double newExp;
 		if (curExp <= -10.0) {
@@ -396,7 +412,6 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 		if (logger.isTraceEnabled()) logger.trace("curExp[ {} newExp {}", curExp, newExp);
 
-		// If they don't have the same sign, ABORT
 		if (!((curExp < 0) == (newExp < 0)) || Math.abs(curExp - newExp) < .001f) return false;
 
 		camera.set(CV_CAP_PROP_EXPOSURE, newExp);
@@ -412,7 +427,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	@Override
 	public void resetExposure() {
-		if (!usingSarxosFallback && origExposure.isPresent()) camera.set(CV_CAP_PROP_EXPOSURE, origExposure.get());
+		if (!usingFfmpegFallback && origExposure.isPresent()) camera.set(CV_CAP_PROP_EXPOSURE, origExposure.get());
 	}
 
 	@Override
