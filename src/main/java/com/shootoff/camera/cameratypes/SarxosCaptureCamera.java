@@ -48,6 +48,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	private int cameraIndex = -1;
 	private int discoveryIndex = -1;
+	private String cameraName;
 	private final VideoCapture camera;
 
 	// Fallback: use webcam-capture directly when OpenCV can't handle the device
@@ -90,6 +91,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		if (cameraIndex < 0) throw new IllegalArgumentException("Camera not found: " + cameraName);
 
 		camera = new VideoCapture();
+		this.cameraName = cameraName;
 		this.discoveryIndex = cameraIndex;
 		this.cameraIndex = resolveDeviceIndex(cameraName, cameraIndex);
 
@@ -99,6 +101,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 		if (cameraIndex < 0) throw new IllegalArgumentException("Camera not found: " + cameraName);
 
 		camera = new VideoCapture();
+		this.cameraName = cameraName;
 		this.discoveryIndex = cameraIndex;
 		this.cameraIndex = resolveDeviceIndex(cameraName, cameraIndex);
 
@@ -187,6 +190,29 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 			if (idx >= 0 && idx < webcams.size()) {
 				sarxosWebcam = webcams.get(idx);
 				try {
+					// Request a usable resolution. The bridj-based native
+					// capture can segfault at large sizes (e.g. 640x480) on
+					// some devices, so pick the largest size that doesn't
+					// exceed 320x240 — or fall back to the biggest available
+					// if all sizes are small.
+					final Dimension[] sizes = sarxosWebcam.getViewSizes();
+					if (sizes != null && sizes.length > 0) {
+						Dimension best = sizes[0];
+						Dimension bestSafe = null;
+						for (final Dimension d : sizes) {
+							if (d.width <= 320 && d.height <= 240) {
+								if (bestSafe == null || d.width * d.height > bestSafe.width * bestSafe.height) {
+									bestSafe = d;
+								}
+							}
+							if (d.width * d.height > best.width * best.height) {
+								best = d;
+							}
+						}
+						final Dimension chosen = bestSafe != null ? bestSafe : best;
+						sarxosWebcam.setViewSize(chosen);
+						logger.info("Set webcam-capture resolution to {}x{}", chosen.width, chosen.height);
+					}
 					sarxosWebcam.open();
 					if (sarxosWebcam.isOpen()) {
 						usingSarxosFallback = true;
@@ -248,6 +274,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 
 	@Override
 	public String getName() {
+		if (cameraName != null) return cameraName;
 		return Webcam.getWebcams().get(discoveryIndex >= 0 ? discoveryIndex : cameraIndex).getName();
 	}
 
