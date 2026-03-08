@@ -76,6 +76,8 @@ CameraRenamedListener {
 	@FXML private ListView<String> webcamListView;
 	@FXML private Slider markerRadiusSlider;
 	@FXML private Label markerRadiusLabel;
+	@FXML private Slider detectionSensitivitySlider;
+	@FXML private Label detectionSensitivityLabel;
 	@FXML private ChoiceBox<String> ignoreLaserColorChoiceBox;
 	@FXML private CheckBox redLaserSoundCheckBox;
 	@FXML private TextField redLaserSoundTextField;
@@ -136,6 +138,7 @@ CameraRenamedListener {
 		webcamListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
 		linkSliderToLabel(markerRadiusSlider, markerRadiusLabel);
+		linkSliderToLabel(detectionSensitivitySlider, detectionSensitivityLabel);
 		linkSliderToLabel(virtualMagazineSlider, virtualMagazineLabel);
 		linkSliderToLabel(malfunctionsSlider, malfunctionsLabel);
 
@@ -156,6 +159,7 @@ CameraRenamedListener {
 		webcamListView.setItems(cameras);
 
 		markerRadiusSlider.setValue(config.getMarkerRadius());
+		detectionSensitivitySlider.setValue(config.getDetectionSensitivity());
 		ignoreLaserColorChoiceBox.setValue(config.getIgnoreLaserColorName());
 		redLaserSoundCheckBox.setSelected(config.useRedLaserSound());
 		redLaserSoundTextField.setText(config.getRedLaserSound().getPath());
@@ -414,6 +418,7 @@ CameraRenamedListener {
 		config.setWebcams(configuredNames, configuredCameras);
 		config.setRecordingCameras(recordingCameras);
 		config.setMarkerRadius((int) markerRadiusSlider.getValue());
+		config.setDetectionSensitivity((int) detectionSensitivitySlider.getValue());
 		config.setIgnoreLaserColor(!ignoreLaserColorChoiceBox.getValue().equals("None"));
 		config.setIgnoreLaserColorName(ignoreLaserColorChoiceBox.getValue());
 		config.setUseRedLaserSound(redLaserSoundCheckBox.isSelected());

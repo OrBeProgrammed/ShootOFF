@@ -88,6 +88,7 @@ public class Configuration {
 	private static final String WEBCAMS_PROP = "shootoff.webcams";
 	private static final String RECORDING_WEBCAMS_PROP = WEBCAMS_PROP + ".recording";
 	private static final String MARKER_RADIUS_PROP = "shootoff.markerradius";
+	private static final String DETECTION_SENSITIVITY_PROP = "shootoff.detectionsensitivity";
 	private static final String IGNORE_LASER_COLOR_PROP = "shootoff.ignorelasercolor";
 	private static final String USE_RED_LASER_SOUND_PROP = "shootoff.redlasersound.use";
 	private static final String RED_LASER_SOUND_PROP = "shootoff.redlasersound";
@@ -133,6 +134,7 @@ public class Configuration {
 	private final Map<String, String> ipcamCredentials = new HashMap<>();
 	private final Map<String, Camera> webcams = new HashMap<>();
 	private int markerRadius = 4;
+	private int detectionSensitivity = 5; // 1 (least sensitive) to 10 (most sensitive), default 5
 	private boolean ignoreLaserColor = false;
 	private String ignoreLaserColorName = "None";
 	private boolean useRedLaserSound = false;
@@ -321,6 +323,10 @@ public class Configuration {
 			setMarkerRadius(Integer.parseInt(prop.getProperty(MARKER_RADIUS_PROP)));
 		}
 
+		if (prop.containsKey(DETECTION_SENSITIVITY_PROP)) {
+			setDetectionSensitivity(Integer.parseInt(prop.getProperty(DETECTION_SENSITIVITY_PROP)));
+		}
+
 		if (prop.containsKey(IGNORE_LASER_COLOR_PROP)) {
 			final String colorName = prop.getProperty(IGNORE_LASER_COLOR_PROP);
 
@@ -475,6 +481,7 @@ public class Configuration {
 		prop.setProperty(WEBCAMS_PROP, webcamList.toString());
 		prop.setProperty(RECORDING_WEBCAMS_PROP, recordingWebcamList.toString());
 		prop.setProperty(MARKER_RADIUS_PROP, String.valueOf(markerRadius));
+		prop.setProperty(DETECTION_SENSITIVITY_PROP, String.valueOf(detectionSensitivity));
 		prop.setProperty(IGNORE_LASER_COLOR_PROP, ignoreLaserColorName);
 		prop.setProperty(USE_RED_LASER_SOUND_PROP, String.valueOf(useRedLaserSound));
 		prop.setProperty(RED_LASER_SOUND_PROP, redLaserSound.getPath());
@@ -705,6 +712,14 @@ public class Configuration {
 
 	public void setMarkerRadius(int markRadius) {
 		markerRadius = markRadius;
+	}
+
+	public void setDetectionSensitivity(int sensitivity) {
+		detectionSensitivity = Math.max(1, Math.min(10, sensitivity));
+	}
+
+	public int getDetectionSensitivity() {
+		return detectionSensitivity;
 	}
 
 	public void setIgnoreLaserColor(boolean ignoreLaserColor) {

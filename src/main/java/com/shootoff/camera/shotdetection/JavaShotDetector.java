@@ -71,7 +71,9 @@ public final class JavaShotDetector extends FrameProcessingShotDetector {
 	// Individual pixel threshold
 	private final static int MAXIMUM_LUM_VALUE = 65025;
 	private final static int EXCESSIVE_BRIGHTNESS_THRESHOLD = (int) (.96 * MAXIMUM_LUM_VALUE);
-	private final static int MINIMUM_BRIGHTNESS_INCREASE = (int) (.117 * MAXIMUM_LUM_VALUE);;
+	private final static int DEFAULT_MINIMUM_BRIGHTNESS_INCREASE = (int) (.117 * MAXIMUM_LUM_VALUE);
+	private int minimumBrightnessIncrease = DEFAULT_MINIMUM_BRIGHTNESS_INCREASE;
+	private int dynamicThresholdDivisor = 4; // higher = less aggressive dynamic filtering
 
 	// Aggregate # of pixel threshold
 	private int BRIGHTNESS_WARNING_AVG_THRESHOLD;
@@ -112,6 +114,20 @@ public final class JavaShotDetector extends FrameProcessingShotDetector {
 
 		this.cameraManager = cameraManager;
 
+		// Apply detection sensitivity from config (1-10, default 5)
+		// Sensitivity 1 = 20% of max lum (least sensitive)
+		// Sensitivity 5 = 11.7% (original default)
+		// Sensitivity 10 = 1% (most sensitive)
+		final Configuration cfg = Configuration.getConfig();
+		if (cfg != null) {
+			final int sensitivity = cfg.getDetectionSensitivity();
+			// 1->0.20, 5->0.117, 10->0.01
+			final double factor = Math.max(0.01, 0.222 - (sensitivity * 0.0213));
+			minimumBrightnessIncrease = (int) (factor * MAXIMUM_LUM_VALUE);
+			// At high sensitivity, relax dynamic threshold slightly
+			dynamicThresholdDivisor = sensitivity >= 8 ? 5 : 4;
+		}
+
 		setFrameSize(cameraManager.getFeedWidth(), cameraManager.getFeedHeight());
 
 		pixelClusterManager = new PixelClusterManager(cameraManager.getFeedWidth(), cameraManager.getFeedHeight());
@@ -132,9 +148,16 @@ public final class JavaShotDetector extends FrameProcessingShotDetector {
 
 		final double frameSize = width * height;
 
-		MOTION_WARNING_AVG_THRESHOLD = (int) (frameSize * .000395);
-		MOTION_WARNING_THRESHOLD_PIXELS = (int) (frameSize * 0.00195);
-		MAXIMUM_THRESHOLD_PIXELS_FOR_MOTION_AVG = (int) (frameSize * 0.00195);
+		// Scale motion thresholds with detection sensitivity — higher sensitivity
+		// means more pixels pass the brightness threshold, so we need to tolerate
+		// more threshold pixels before calling it "excessive motion"
+		final Configuration motionCfg = Configuration.getConfig();
+		final int sens = (motionCfg != null) ? motionCfg.getDetectionSensitivity() : 5;
+		// sensitivity 5 -> 1x (original), 10 -> 4x
+		final double motionScale = 1.0 + (Math.max(0, sens - 5) * 0.6);
+		MOTION_WARNING_AVG_THRESHOLD = (int) (frameSize * .000395 * motionScale);
+		MOTION_WARNING_THRESHOLD_PIXELS = (int) (frameSize * 0.00195 * motionScale);
+		MAXIMUM_THRESHOLD_PIXELS_FOR_MOTION_AVG = (int) (frameSize * 0.00195 * motionScale);
 
 		// Aggregate # of pixel threshold
 		BRIGHTNESS_WARNING_AVG_THRESHOLD = (int) (frameSize * .000325);
@@ -187,10 +210,9 @@ public final class JavaShotDetector extends FrameProcessingShotDetector {
 	private boolean pixelAboveThreshold(int currentLum, int lumsMovingAverage) {
 		final int increase = (currentLum - lumsMovingAverage);
 
-		if (increase < MINIMUM_BRIGHTNESS_INCREASE) return false;
+		if (increase < minimumBrightnessIncrease) return false;
 
-		// (var >> 2) equivalent to (var / 4)
-		final int threshold = (MAXIMUM_LUM_VALUE - lumsMovingAverage) >> 2;
+		final int threshold = (MAXIMUM_LUM_VALUE - lumsMovingAverage) / dynamicThresholdDivisor;
 
 		final int dynamic_increase = (int) ((MAXIMUM_LUM_VALUE - threshold)
 				* ((double) avgThresholdPixels / (double) MAXIMUM_THRESHOLD_PIXELS_FOR_AVG));
