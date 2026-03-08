@@ -231,6 +231,7 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 			try {
 				final ProcessBuilder pb = new ProcessBuilder(
 					"ffmpeg",
+					"-loglevel", "error",
 					"-f", "v4l2",
 					"-video_size", res[0] + "x" + res[1],
 					"-i", devicePath,
@@ -240,6 +241,8 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 					"-"
 				);
 				pb.redirectErrorStream(false);
+				// Send ffmpeg's stderr to /dev/null to prevent buffer fill-up
+				pb.redirectError(new java.io.File("/dev/null"));
 				final Process proc = pb.start();
 
 				// Read a test frame to verify it works
@@ -261,6 +264,14 @@ public class SarxosCaptureCamera extends CalculatedFPSCamera {
 					ffmpegHeight = res[1];
 					usingFfmpegFallback = true;
 					logger.info("ffmpeg fallback opened at {}x{} for {}", res[0], res[1], devicePath);
+
+					// Ensure ffmpeg is killed when JVM exits
+					Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+						if (ffmpegProcess != null && ffmpegProcess.isAlive()) {
+							ffmpegProcess.destroyForcibly();
+						}
+					}));
+
 					return true;
 				} else {
 					logger.warn("ffmpeg fallback could not read full frame at {}x{} (got {} of {} bytes)",
