@@ -498,8 +498,27 @@ public class ShootOFFController implements CameraConfigListener, CameraErrorView
 
 		final Tab cameraTab = new Tab(webcamName);
 		final Group cameraCanvasGroup = new Group();
-		// 640 x 480
-		cameraTab.setContent(new AnchorPane(cameraCanvasGroup));
+		final AnchorPane cameraPane = new AnchorPane(cameraCanvasGroup);
+		cameraTab.setContent(cameraPane);
+
+		// Scale the canvas group to fill available tab space while preserving
+		// the 4:3 aspect ratio. Coordinates stay at 640x480 internally.
+		final double baseWidth = config.getDisplayWidth();
+		final double baseHeight = config.getDisplayHeight();
+		final javafx.scene.transform.Scale scaleTransform = new javafx.scene.transform.Scale(1, 1);
+		cameraCanvasGroup.getTransforms().add(scaleTransform);
+
+		final Runnable updateScale = () -> {
+			final double paneW = cameraPane.getWidth();
+			final double paneH = cameraPane.getHeight();
+			if (paneW > 0 && paneH > 0) {
+				final double scale = Math.min(paneW / baseWidth, paneH / baseHeight);
+				scaleTransform.setX(scale);
+				scaleTransform.setY(scale);
+			}
+		};
+		cameraPane.widthProperty().addListener((obs, oldVal, newVal) -> updateScale.run());
+		cameraPane.heightProperty().addListener((obs, oldVal, newVal) -> updateScale.run());
 
 		final CanvasManager canvasManager = new CanvasManager(cameraCanvasGroup, this, webcamName, shotEntries);
 		final Optional<CameraManager> cameraManagerOptional = camerasSupervisor.addCameraManager(cameraInterface, this,
